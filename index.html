@@ -1,308 +1,368 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>興嘉國小 - 數位口說檢核</title>
-    <!-- 引入 Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @keyframes pulse-ring {
-            0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-            100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
-        .recording-active {
-            animation: pulse-ring 2s infinite;
-        }
-        /* 隱藏捲軸但可滾動 */
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>興嘉國小 - 數位口說檢核</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body class="bg-slate-50 min-h-screen font-sans text-slate-800 selection:bg-indigo-200">
+<body class="bg-gray-50 min-h-screen text-gray-800 font-sans">
 
-    <div class="max-w-md mx-auto pt-8 pb-12 px-4">
-        <!-- 頂部標題 -->
-        <div class="text-center mb-8">
-            <div class="inline-block bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-xs font-bold tracking-widest mb-2">
-                XINGJIA ELEMENTARY
-            </div>
-            <h1 class="text-3xl font-extrabold text-slate-900">數位口說檢核</h1>
-            <p class="text-slate-500 mt-2 text-sm">請選擇今天的挑戰句並錄音上傳</p>
-        </div>
+  <script>
+    // ==========================================
+    // ⚠️ 請在這裡填入您的 Google Apps Script 部署網址
+    // ==========================================
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyFMjcJ4S3bJbWJ81j8ISTtA2iKPnKmuqkHmzn8_UFuZ6hPtp1vIvgx_r6vbgSChrbLWw/exec"; 
 
-        <!-- 主要表單卡片 -->
-        <div class="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 relative overflow-hidden">
-            
-            <!-- 載入中遮罩 (抓取題庫時顯示) -->
-            <div id="loadingOverlay" class="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
-                <svg class="animate-spin h-8 w-8 text-indigo-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <p class="text-sm font-medium text-slate-600">正在載入今日挑戰句...</p>
-            </div>
+    // 全域變數
+    let questionsData = [];
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioBlob;
+    let audioBase64;
+    
+    // 頁面載入時執行
+    window.onload = () => {
+      fetchQuestions();
+    };
 
-            <form id="assessmentForm" class="space-y-5">
-                
-                <!-- 班級座號與姓名 -->
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">班級座號</label>
-                        <input type="number" id="studentId" placeholder="例如: 50101" required
-                            class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">姓名</label>
-                        <input type="text" id="studentName" placeholder="王小明" required
-                            class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
-                    </div>
-                </div>
+    // 切換頁籤功能
+    function switchTab(tabName) {
+      if (tabName === 'test') {
+        document.getElementById('tab-test').classList.add('border-blue-600', 'text-blue-600');
+        document.getElementById('tab-test').classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+        document.getElementById('tab-query').classList.remove('border-blue-600', 'text-blue-600');
+        document.getElementById('tab-query').classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+        
+        document.getElementById('section-test').classList.remove('hidden');
+        document.getElementById('section-query').classList.add('hidden');
+      } else {
+        document.getElementById('tab-query').classList.add('border-blue-600', 'text-blue-600');
+        document.getElementById('tab-query').classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+        document.getElementById('tab-test').classList.remove('border-blue-600', 'text-blue-600');
+        document.getElementById('tab-test').classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+        
+        document.getElementById('section-query').classList.remove('hidden');
+        document.getElementById('section-test').classList.add('hidden');
+      }
+    }
 
-                <!-- 挑戰句選擇 (從後端抓取) -->
-                <div>
-                    <label class="block text-sm font-semibold text-slate-700 mb-1">選擇挑戰句</label>
-                    <select id="sentenceSelect" required
-                        class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none text-indigo-700 font-medium appearance-none">
-                        <option value="" disabled selected>請選擇一個句子...</option>
-                        <!-- 選項會透過 JS 動態產生 -->
-                    </select>
-                    <!-- 顯示中文翻譯的區域 -->
-                    <p id="translationText" class="text-xs text-slate-500 mt-2 ml-1 italic min-h-[1.25rem]"></p>
-                </div>
+    // --- 測驗功能區塊 ---
+    async function fetchQuestions() {
+      const selectElement = document.getElementById('questionSelect');
+      selectElement.innerHTML = '<option>載入題目中...</option>';
+      selectElement.disabled = true;
 
-                <hr class="border-slate-100 my-4">
+      try {
+        const response = await fetch(`${GAS_WEB_APP_URL}?action=getQuestions`);
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+          questionsData = result.data;
+          selectElement.innerHTML = '<option value="">-- 請選擇今天的挑戰句 --</option>';
+          questionsData.forEach(q => {
+            selectElement.innerHTML += `<option value="${q.id}">[${q.grade}] ${q.english}</option>`;
+          });
+          selectElement.disabled = false;
+        } else {
+          selectElement.innerHTML = `<option>載入失敗: ${result.message}</option>`;
+        }
+      } catch (error) {
+        selectElement.innerHTML = '<option>載入失敗，請檢查網址或重新整理頁面</option>';
+        console.error("Fetch Error:", error);
+      }
+    }
 
-                <!-- 錄音區塊 -->
-                <div class="text-center space-y-4">
-                    <label class="block text-sm font-semibold text-slate-700">錄音測試</label>
-                    
-                    <div class="flex justify-center items-center gap-4">
-                        <button type="button" id="startBtn" class="flex flex-col items-center justify-center w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition-colors shadow-sm focus:outline-none disabled:opacity-50">
-                            <svg class="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
-                            <span class="text-xs font-bold">錄音</span>
-                        </button>
+    function showTranslation() {
+      const select = document.getElementById('questionSelect');
+      const translationDiv = document.getElementById('translationDisplay');
+      const selectedId = select.value;
 
-                        <button type="button" id="stopBtn" class="hidden flex flex-col items-center justify-center w-20 h-20 bg-red-50 text-red-600 rounded-full recording-active focus:outline-none">
-                            <svg class="w-8 h-8 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"></path></svg>
-                            <span class="text-xs font-bold">停止</span>
-                        </button>
-                    </div>
+      if (!selectedId) {
+        translationDiv.innerHTML = '';
+        return;
+      }
+      const question = questionsData.find(q => q.id === selectedId);
+      if (question) {
+        translationDiv.innerHTML = `<p class="text-blue-600 font-medium bg-blue-50 p-3 rounded-lg border border-blue-100"><i class="fas fa-language mr-2"></i>中文：${question.chinese}</p>`;
+      }
+    }
 
-                    <p id="recordingStatus" class="text-xs text-slate-400 font-medium h-4">準備就緒，請點擊錄音</p>
+    // 錄音相關
+    async function startRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
 
-                    <div id="audioPlayerContainer" class="hidden mt-4">
-                        <audio id="audioPlayback" controls class="w-full h-10 rounded-full"></audio>
-                    </div>
-                </div>
+        mediaRecorder.addEventListener("dataavailable", event => {
+          audioChunks.push(event.data);
+        });
 
-                <!-- 提交按鈕 -->
-                <button type="submit" id="submitBtn" disabled
-                    class="w-full mt-6 bg-indigo-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2">
-                    <span>上傳口說錄音</span>
-                    <svg id="loadingSpinner" class="hidden animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                </button>
+        mediaRecorder.addEventListener("stop", () => {
+          audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audioPlayback = document.getElementById("audioPlayback");
+          audioPlayback.src = audioUrl;
+          audioPlayback.classList.remove('hidden');
+          document.getElementById('uploadBtn').disabled = false;
+          
+          const reader = new FileReader();
+          reader.readAsDataURL(audioBlob);
+          reader.onloadend = function() {
+            audioBase64 = reader.result;
+          }
+        });
 
-                <div id="systemMessage" class="hidden text-center text-sm font-semibold p-3 rounded-lg mt-4"></div>
-            </form>
-        </div>
+        mediaRecorder.start();
+        document.getElementById("startRecordBtn").classList.add('hidden');
+        document.getElementById("stopRecordBtn").classList.remove('hidden');
+        document.getElementById("recordingStatus").classList.remove('hidden');
+      } catch (err) {
+        alert("無法存取麥克風，請確認權限設定。");
+        console.error(err);
+      }
+    }
+
+    function stopRecording() {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      document.getElementById("startRecordBtn").classList.remove('hidden');
+      document.getElementById("stopRecordBtn").classList.add('hidden');
+      document.getElementById("recordingStatus").classList.add('hidden');
+    }
+
+    async function uploadAudio() {
+      const studentId = document.getElementById('studentId').value;
+      const name = document.getElementById('studentName').value;
+      const selectedId = document.getElementById('questionSelect').value;
+
+      if (!studentId || !name || !selectedId || !audioBase64) {
+        alert("請確認班級座號、姓名、題目皆已填寫，且已完成錄音！");
+        return;
+      }
+
+      const question = questionsData.find(q => q.id === selectedId);
+      const sentence = question ? question.english : '';
+
+      const btn = document.getElementById('uploadBtn');
+      const statusDiv = document.getElementById('uploadStatus');
+      
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>上傳中...';
+      statusDiv.classList.add('hidden');
+
+      const payload = {
+        action: 'uploadRecord',
+        studentId: studentId,
+        name: name,
+        questionId: selectedId,
+        sentence: sentence,
+        audioBase64: audioBase64
+      };
+
+      try {
+        const response = await fetch(GAS_WEB_APP_URL, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+          statusDiv.innerHTML = '<i class="fas fa-check-circle mr-2"></i>上傳成功！老師已經收到你的錄音囉 🎉';
+          statusDiv.className = "mt-4 p-4 rounded-lg bg-green-100 text-green-700 text-center font-bold";
+          statusDiv.classList.remove('hidden');
+          
+          // 重置錄音區塊
+          document.getElementById('audioPlayback').classList.add('hidden');
+          audioBase64 = null;
+        } else {
+          throw new Error(result.message);
+        }
+      } catch (error) {
+        statusDiv.innerHTML = `<i class="fas fa-exclamation-triangle mr-2"></i>上傳失敗：${error.message}`;
+        statusDiv.className = "mt-4 p-4 rounded-lg bg-red-100 text-red-700 text-center font-bold";
+        statusDiv.classList.remove('hidden');
+      } finally {
+        btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i>上傳口說錄音';
+        btn.disabled = audioBase64 == null; // 只有在沒音檔時才鎖住
+      }
+    }
+
+    // --- 查詢成績功能區塊 ---
+    async function queryScore() {
+      const queryId = document.getElementById('queryStudentId').value;
+      const resultDiv = document.getElementById('queryResult');
+      const resultBody = document.getElementById('queryResultBody');
+      const queryBtn = document.getElementById('queryBtn');
+
+      if (!queryId) {
+        alert("請輸入要查詢的班級座號！");
+        return;
+      }
+
+      queryBtn.disabled = true;
+      queryBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>查詢中...';
+      resultDiv.classList.add('hidden');
+      resultBody.innerHTML = '';
+
+      try {
+        const response = await fetch(`${GAS_WEB_APP_URL}?action=checkStatus&studentId=${queryId}`);
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+          if (result.data.length === 0) {
+            resultBody.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">找不到座號 ${queryId} 的紀錄，請確認是否有上傳過錄音喔！</td></tr>`;
+          } else {
+            result.data.forEach(record => {
+              // 根據狀態設定顏色
+              let statusColor = "text-gray-500 bg-gray-100";
+              if(record.status.includes("通過")) statusColor = "text-green-700 bg-green-100 font-bold";
+              else if(record.status.includes("加油")) statusColor = "text-red-700 bg-red-100 font-bold";
+              else if(record.status.includes("待審核")) statusColor = "text-yellow-700 bg-yellow-100";
+
+              let pointsDisplay = record.points > 0 ? `<span class="text-yellow-600 font-bold"><i class="fas fa-star mr-1"></i>${record.points} 點</span>` : `<span class="text-gray-400">-</span>`;
+
+              const tr = document.createElement('tr');
+              tr.className = "border-b border-gray-200 hover:bg-gray-50";
+              tr.innerHTML = `
+                <td class="px-4 py-3 text-sm text-gray-600">${record.time}</td>
+                <td class="px-4 py-3 text-sm font-medium text-gray-800">${record.sentence}</td>
+                <td class="px-4 py-3 text-sm text-center">
+                  <span class="px-2 py-1 rounded-full text-xs ${statusColor}">${record.status}</span>
+                </td>
+                <td class="px-4 py-3 text-sm text-center">${pointsDisplay}</td>
+              `;
+              resultBody.appendChild(tr);
+            });
+          }
+          resultDiv.classList.remove('hidden');
+        } else {
+          alert(`查詢失敗: ${result.message}`);
+        }
+      } catch (error) {
+        alert("查詢發生錯誤，請檢查網路連線。");
+        console.error(error);
+      } finally {
+        queryBtn.innerHTML = '<i class="fas fa-search mr-2"></i>查詢成績';
+        queryBtn.disabled = false;
+      }
+    }
+  </script>
+
+  <!-- 頁面標題 -->
+  <header class="bg-white shadow-sm border-b border-gray-200 pt-8 pb-4">
+    <div class="max-w-3xl mx-auto px-4 text-center">
+      <span class="bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">Xingjia Elementary</span>
+      <h1 class="text-3xl font-extrabold text-gray-900 mt-3 mb-2">數位口說檢核系統</h1>
+      <p class="text-gray-500 text-sm">請選擇測驗或查詢您的錄音成績</p>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-8">
+    
+    <!-- 分頁導覽列 -->
+    <div class="border-b border-gray-200 mb-6">
+      <nav class="-mb-px flex space-x-8 justify-center" aria-label="Tabs">
+        <button onclick="switchTab('test')" id="tab-test" class="border-blue-600 text-blue-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg flex items-center">
+          <i class="fas fa-microphone-alt mr-2"></i>我要測驗
+        </button>
+        <button onclick="switchTab('query')" id="tab-query" class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg flex items-center">
+          <i class="fas fa-search mr-2"></i>查詢成績
+        </button>
+      </nav>
     </div>
 
-    <script>
-        // ==========================================
-        // ⚠️ 請替換為您的 Google Apps Script 網頁應用程式網址
-        // ==========================================
-        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyFMjcJ4S3bJbWJ81j8ISTtA2iKPnKmuqkHmzn8_UFuZ6hPtp1vIvgx_r6vbgSChrbLWw/exec";
+    <!-- ==================== 測驗區塊 ==================== -->
+    <div id="section-test" class="bg-white rounded-2xl shadow-xl p-6 md:p-10 border border-gray-100">
+      
+      <!-- 學生資料 -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-2">班級座號 (例如: 50101)</label>
+          <input type="number" id="studentId" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition shadow-sm" placeholder="請輸入班級與座號">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-2">姓名</label>
+          <input type="text" id="studentName" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition shadow-sm" placeholder="請輸入姓名">
+        </div>
+      </div>
 
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const audioPlayback = document.getElementById('audioPlayback');
-        const audioPlayerContainer = document.getElementById('audioPlayerContainer');
-        const submitBtn = document.getElementById('submitBtn');
-        const recordingStatus = document.getElementById('recordingStatus');
-        const assessmentForm = document.getElementById('assessmentForm');
-        const systemMessage = document.getElementById('systemMessage');
-        const loadingSpinner = document.getElementById('loadingSpinner');
-        const sentenceSelect = document.getElementById('sentenceSelect');
-        const translationText = document.getElementById('translationText');
-        const loadingOverlay = document.getElementById('loadingOverlay');
+      <hr class="border-gray-100 my-8">
 
-        let mediaRecorder;
-        let audioChunks = [];
-        let audioBlob = null;
-        let base64AudioData = null;
-        let questionsData = []; // 存放從後端抓取的題目資料
+      <!-- 選擇題目 -->
+      <div class="mb-8">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">選擇挑戰句</label>
+        <select id="questionSelect" onchange="showTranslation()" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm font-medium text-gray-800 transition">
+          <option>載入題目中...</option>
+        </select>
+        <div id="translationDisplay" class="mt-3"></div>
+      </div>
 
-        // 1. 頁面載入時，從 GAS 獲取題目清單
-        async function fetchQuestions() {
-            if (GAS_WEB_APP_URL === "在此貼上您的_Google_Apps_Script_URL") {
-                loadingOverlay.innerHTML = "<p class='text-red-500 font-bold'>請先設定 GAS URL</p>";
-                return;
-            }
+      <!-- 錄音區塊 -->
+      <div class="bg-gray-50 p-6 rounded-xl border border-gray-200 mb-8 flex flex-col items-center">
+        <div id="recordingStatus" class="hidden mb-4 flex items-center text-red-600 font-bold animate-pulse">
+          <div class="w-3 h-3 bg-red-600 rounded-full mr-2"></div>正在錄音中...
+        </div>
+        
+        <button id="startRecordBtn" onclick="startRecording()" class="bg-red-500 hover:bg-red-600 text-white font-bold py-4 px-8 rounded-full shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 flex items-center text-lg">
+          <i class="fas fa-microphone mr-3 text-xl"></i>開始錄音
+        </button>
+        
+        <button id="stopRecordBtn" onclick="stopRecording()" class="hidden bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-8 rounded-full shadow-lg hover:shadow-xl transition flex items-center text-lg">
+          <i class="fas fa-stop mr-3 text-xl"></i>停止錄音
+        </button>
 
-            try {
-                // 使用 GET 請求並帶上 action=getQuestions 參數
-                const response = await fetch(`${GAS_WEB_APP_URL}?action=getQuestions`);
-                const result = await response.json();
+        <audio id="audioPlayback" controls class="hidden mt-6 w-full max-w-md shadow-sm rounded-full"></audio>
+      </div>
 
-                if (result.status === "success") {
-                    questionsData = result.data;
-                    
-                    // 清空預設選項並加入新選項
-                    sentenceSelect.innerHTML = '<option value="" disabled selected>請選擇今天要挑戰的句子...</option>';
-                    
-                    questionsData.forEach(q => {
-                        const option = document.createElement('option');
-                        // value 存題目的 ID，文字顯示英文句子
-                        option.value = q.id; 
-                        option.textContent = `[${q.grade}] ${q.english}`;
-                        sentenceSelect.appendChild(option);
-                    });
+      <!-- 上傳按鈕 -->
+      <button id="uploadBtn" onclick="uploadAudio()" disabled class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-xl shadow-md transition text-lg flex items-center justify-center">
+        <i class="fas fa-cloud-upload-alt mr-2"></i>上傳口說錄音
+      </button>
 
-                    loadingOverlay.classList.add('hidden'); // 隱藏載入遮罩
-                } else {
-                    throw new Error(result.message);
-                }
-            } catch (error) {
-                console.error("載入題目失敗:", error);
-                loadingOverlay.innerHTML = `<p class='text-red-500 font-bold text-sm'>載入題目失敗，請重新整理頁面。<br>(${error.message})</p>`;
-            }
-        }
+      <div id="uploadStatus" class="hidden mt-4"></div>
+    </div>
 
-        // 當選擇改變時，顯示對應的中文翻譯
-        sentenceSelect.addEventListener('change', (e) => {
-            const selectedId = e.target.value;
-            const selectedQuestion = questionsData.find(q => q.id === selectedId);
-            if (selectedQuestion) {
-                translationText.textContent = `💡 中文意思：${selectedQuestion.chinese}`;
-            } else {
-                translationText.textContent = "";
-            }
-        });
+    <!-- ==================== 查詢成績區塊 ==================== -->
+    <div id="section-query" class="hidden bg-white rounded-2xl shadow-xl p-6 md:p-10 border border-gray-100">
+      <div class="text-center mb-8">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 text-blue-600 mb-4">
+          <i class="fas fa-search-dollar text-2xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-800">查詢我的成績與點數</h2>
+        <p class="text-gray-500 mt-2">輸入座號即可查看老師批改的結果喔！</p>
+      </div>
 
-        // 載入頁面時執行
-        window.addEventListener('DOMContentLoaded', fetchQuestions);
+      <div class="flex flex-col md:flex-row gap-4 mb-8">
+        <input type="number" id="queryStudentId" class="flex-1 px-4 py-4 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg shadow-sm" placeholder="請輸入班級座號 (例如: 50101)">
+        <button id="queryBtn" onclick="queryScore()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-xl shadow-md transition text-lg flex items-center justify-center whitespace-nowrap">
+          <i class="fas fa-search mr-2"></i>查詢成績
+        </button>
+      </div>
 
-        // --- 以下為錄音與上傳邏輯 (與之前相同，略做調整) ---
+      <!-- 查詢結果表格 -->
+      <div id="queryResult" class="hidden">
+        <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+          <table class="min-w-full bg-white">
+            <thead class="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">上傳時間</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">挑戰句</th>
+                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">老師審核</th>
+                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">獲得點數</th>
+              </tr>
+            </thead>
+            <tbody id="queryResultBody" class="divide-y divide-gray-200">
+              <!-- 透過 JS 動態產生資料 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
-        startBtn.addEventListener('click', async () => {
-            if(!sentenceSelect.value){
-                alert("請先選擇要挑戰的句子喔！");
-                sentenceSelect.focus();
-                return;
-            }
-
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
-
-                mediaRecorder.ondataavailable = event => {
-                    if (event.data.size > 0) audioChunks.push(event.data);
-                };
-
-                mediaRecorder.onstop = () => {
-                    audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                    audioPlayback.src = URL.createObjectURL(audioBlob);
-                    audioPlayerContainer.classList.remove('hidden');
-                    
-                    const reader = new FileReader();
-                    reader.readAsDataURL(audioBlob);
-                    reader.onloadend = () => {
-                        base64AudioData = reader.result;
-                        submitBtn.disabled = false;
-                    };
-                    stream.getTracks().forEach(track => track.stop());
-                };
-
-                mediaRecorder.start();
-                startBtn.classList.add('hidden');
-                stopBtn.classList.remove('hidden');
-                recordingStatus.textContent = "正在錄音中...";
-                recordingStatus.classList.add('text-red-500');
-                audioPlayerContainer.classList.add('hidden');
-                submitBtn.disabled = true;
-
-            } catch (err) {
-                alert("無法存取麥克風，請確認瀏覽器權限設定。");
-            }
-        });
-
-        stopBtn.addEventListener('click', () => {
-            if (mediaRecorder && mediaRecorder.state === "recording") {
-                mediaRecorder.stop();
-                stopBtn.classList.add('hidden');
-                startBtn.classList.remove('hidden');
-                recordingStatus.textContent = "錄音完成！可點擊播放試聽";
-                recordingStatus.classList.replace('text-red-500', 'text-green-600');
-            }
-        });
-
-        assessmentForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (!base64AudioData) return alert("請先完成錄音！");
-
-            // 取得選擇的題目內容
-            const selectedQuestion = questionsData.find(q => q.id === sentenceSelect.value);
-
-            const payload = {
-                action: "uploadRecord", // 告訴後端這是上傳錄音的請求
-                studentId: document.getElementById('studentId').value,
-                name: document.getElementById('studentName').value,
-                questionId: selectedQuestion.id,
-                sentence: selectedQuestion.english, // 將完整句子傳回後端方便紀錄
-                audioBase64: base64AudioData
-            };
-
-            submitBtn.disabled = true;
-            submitBtn.querySelector('span').textContent = "上傳處理中...";
-            loadingSpinner.classList.remove('hidden');
-            systemMessage.classList.add('hidden');
-
-            try {
-                const response = await fetch(GAS_WEB_APP_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-
-                if (result.status === "success") {
-                    showMessage("上傳成功！老師已經收到你的錄音囉 🎉", "success");
-                    // 重置表單 (保留學號姓名方便下一位或下次錄音)
-                    sentenceSelect.value = "";
-                    translationText.textContent = "";
-                    audioPlayerContainer.classList.add('hidden');
-                    base64AudioData = null;
-                    recordingStatus.textContent = "準備就緒，請點擊錄音";
-                    recordingStatus.className = "text-xs text-slate-400 font-medium h-4";
-                    submitBtn.disabled = true;
-                } else {
-                    showMessage("上傳失敗：" + result.message, "error");
-                }
-            } catch (error) {
-                showMessage("網路連線錯誤，請稍後再試。", "error");
-            } finally {
-                submitBtn.querySelector('span').textContent = "上傳口說錄音";
-                loadingSpinner.classList.add('hidden');
-            }
-        });
-
-        function showMessage(text, type) {
-            systemMessage.textContent = text;
-            systemMessage.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800');
-            if (type === 'success') {
-                systemMessage.classList.add('bg-green-100', 'text-green-800');
-            } else {
-                systemMessage.classList.add('bg-red-100', 'text-red-800');
-                submitBtn.disabled = false;
-            }
-        }
-    </script>
+  </main>
 </body>
 </html>
